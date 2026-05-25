@@ -35,3 +35,60 @@
 2. Файл docker-compose.yml с установкой PostgreSQL, Flink, Kafka и запуском приложения, которое из файлов mock_data(*).csv создает сообщения json в Kafka.
 3. Инструкция, как запускать Flink-джобу и приложение для отправки данных в Kafka для проверки лабораторной работы.
 4. Код Apache Flink для трансформации данных в режиме streaming.
+
+## Решение
+
+Выполнен обязательный объем лабораторной:
+
+1. `docker-compose.yml` - PostgreSQL 16, Kafka 3.7, Flink 1.19.1 и producer CSV -> JSON -> Kafka.
+2. `sql/postgres/01_star_schema.sql` - DDL модели звезда в PostgreSQL.
+3. `producer/produce_csv_to_kafka.py` - приложение, которое читает 10 CSV-файлов и отправляет каждую строку JSON-сообщением в Kafka-топик `pet-sales`.
+4. `flink-job/src/main/java/ru/lab/PetSalesFlinkJob.java` - Apache Flink streaming job: читает Kafka, преобразует JSON в измерения и факт продаж, пишет результат в PostgreSQL.
+
+Модель содержит факт `fact_sales` и измерения:
+`dim_customer`, `dim_seller`, `dim_product`, `dim_supplier`, `dim_store`, `dim_date`, `dim_country`, `dim_city`, `dim_postal_area`, `dim_product_category`, `dim_pet_category`.
+
+## Запуск
+
+Для чистого запуска:
+
+```bash
+docker compose down -v
+docker compose up --build -d
+```
+
+При старте:
+
+- PostgreSQL создает таблицы модели звезда;
+- Kafka поднимает топик `pet-sales`;
+- producer отправляет 10000 JSON-сообщений из 10 CSV-файлов;
+- Flink job читает Kafka в streaming-режиме и заполняет PostgreSQL.
+
+PostgreSQL для DBeaver:
+
+- host: `localhost`
+- port: `5434`
+- database: `lab3`
+- user: `lab`
+- password: `lab`
+
+Flink UI:
+
+- URL: `http://localhost:8081`
+
+Kafka доступна внутри Docker-сети как `kafka:9092`, с хоста порт проброшен на `localhost:9094`.
+
+## Проверка
+
+Логи producer:
+
+```bash
+docker compose logs producer
+```
+
+Проверка итоговых таблиц PostgreSQL:
+
+```bash
+docker compose exec -T postgres psql -U lab -d lab3 -c "SELECT COUNT(*) FROM fact_sales;"
+docker compose exec -T postgres psql -U lab -d lab3 -c "SELECT 'dim_country' AS table_name, COUNT(*) FROM dim_country UNION ALL SELECT 'dim_product', COUNT(*) FROM dim_product UNION ALL SELECT 'dim_date', COUNT(*) FROM dim_date UNION ALL SELECT 'fact_sales', COUNT(*) FROM fact_sales;"
+```
